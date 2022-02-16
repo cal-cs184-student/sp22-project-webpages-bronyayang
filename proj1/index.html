@@ -1,7 +1,249 @@
-<html>
-	<head>
-	</head>
-	<body>
-		Project 1 here
-	</body>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+<head>
+<style>
+  body {
+    padding: 100px;
+    width: 1000px;
+    margin: auto;
+    text-align: left;
+    font-weight: 300;
+    font-family: 'Open Sans', sans-serif;
+    color: #121212;
+  }
+  h1, h2, h3, h4 {
+    font-family: 'Source Sans Pro', sans-serif;
+  }
+</style>
+<title>CS 184 Rasterizer</title>
+<meta http-equiv="content-type" content="text/html; charset=utf-8" />
+<link href="https://fonts.googleapis.com/css?family=Open+Sans|Source+Sans+Pro" rel="stylesheet">
+</head>
+
+
+<body>
+
+<h1 align="middle">CS 184: Computer Graphics and Imaging, Spring 2022</h1>
+<h1 align="middle">Project 1: Rasterizer</h1>
+<h2 align="middle">Carl Gan and Bronya(Shijia) Yang, CS184-the-big-brother-s-watching</h2>
+
+<br><br>
+
+<div>
+
+<h2 align="middle">Overview</h2>
+<p>In this project, we build a rasterizer. We first write code to rasterize plain triangles with a single color inside. Then, we apply antialiasing
+techniques, such as supersampling to triangles to remove aliasing effect of triangles.
+We also learn to write transformation matrix in homogenous coordinate to transform triangles.
+We also implement barycentric coordinates to get the color change within a triangle. Now, we can have colorful triangles.
+In the end, we apply textures to the triangles and use different mipmap levels to achieve the realistic texture mapping effect.</p>
+
+<h2 align="middle">Section I: Rasterization</h2>
+
+<h3 align="middle">Part 1: Rasterizing single-color triangles</h3>
+
+<p>In this task, we are asked to rasterize triangles. A naive implementation is to loop through all pixels in the triangle bounding box. For each pixel, 
+  we take its center point (x+0.5, y+0.5) and perform a point-in-triangle test (three line tests) as described in lecture 2 slides. Specifically, compute Li =
+  -(x - X_i)*(Y_(i+1) - Y_i) + (y - Yi)*(X_(i+1) - X_i) and if L1, L2, and L3 >= 0, the point is inside the triangle (>0) or on the triangle edges (=0).</p>
+  
+<p>One mistake we made is that we disregraded the winding direction of the triangle. When winding direction is counter-clockwise, we check if L1, L2, and L3 >= 0.
+When winding direction is clockwise, we check if L1, L2, and L3 <= 0. We find out the winding direction by sum over (X_(i+1) - X_i)*(Y_(i+1) + Y_i). Here completes
+the naive algorithm.</p>
+
+<p>The algorithm we end up using for extra credit is the incremental triangle traversal. First, we sort vertices by y from top to bottom, so that we can check if the triangle is 
+  flat-top, flat-bottom, or neither. The triangle is flat-top if Y0 == Y1. The triangle is flat-bottom if Y1 == Y2. If the triagnle is neither of the two types, then
+  it can be splitted alone Y1 to a bottom-flat traingle at the top and a top-flat traingle at the bottom. We rasterize each of them accordingly.
+  One mistake we made was using the wrong splitting point, so that the traingles were not able to draw.
+</p>
+
+<img src="images/incremental_triangle_traversal.png" align="middle" width="400px"/>
+<figcaption align="middle">The picture shows how to split the trianglr into flat-bottom and flat-top triangles. P0 and P2 should be swapped.</figcaption>
+
+<p>To rasterize a flat-bottom triangle, we first calculate the inverse of slopes of left and right sides of the triangle. For each row, 
+  the inverse of slopse are used to calculate x starting and ending point. Specifically, x starting point is the inverse slope times the difference between
+  current y and bottom vertices y, plus x from the left most vertex. Similarily, x ending point is the inverse slope times the difference between
+  current y and bottom vertices y, plus x from the right most vertex. The things to be careful about are adding 0.5f to coordinates and using consistent
+  vertices order for calculating inverse slope and difference between current y and bottom vertices y. To rasterize a flat-top triangle, the process is 
+  very much the same.</p>
+
+  <p>Our algorithm is no worse than one that checks each sample within the bounding box of the triangle becuase it only traverse through the 
+    area of the triagnle. In other words, the algorithm is O((X0(Y1 - Y2) + X1(Y2 - Y0) + X2(Y0 - Y1))/2). However, 
+    one that checks each sample within the bounding box of the triangle takes O((max(Y0, Y1, Y2) - min(Y0, Y1, Y2))*(max(X0, X1, X2) - min(X0, X1, X2))).
+    Looping through the area of the triangle is indeed faster than area of the bounding box of the triangle.
+  </p>
+
+  <img src="images/test4.png" align="middle" width="400px"/>
+<figcaption align="middle">The picture shows the result of basic/test4.svg with the default viewing parameters 
+  and with the pixel inspector centered on an interesting part of the scene.</figcaption>
+
+  <p></p>
+  <style>
+    table, th, td {
+      border: 1px solid black;
+    }
+    table.center {
+      margin-left: auto;
+      margin-right: auto;
+    }
+    </style>
+
+<table>
+  <caption align="middle">The table shows the timing comperison between naive algorithm and incremental triangle traversal.</caption>
+  <tr>
+    <th>  Traingle  </th>
+    <th>  Naive algorithm timing (ms)  </th>
+    <th>  Incremental triangle traversal timing (ms)  </th>
+  </tr>
+  <tr>
+    <td>Triagnle 1</td>
+    <td>0.0336</td>
+    <td>0.0067</td>
+  </tr>
+  <tr>
+    <td>Triagnle 2</td>
+    <td>0.0164</td>
+    <td>0.0032</td>
+  </tr>
+  <tr>
+    <td>Triagnle 3</td>
+    <td>0.0089</td>
+    <td>0.0007</td>
+  </tr>
+  <tr>
+    <td>Triagnle 4</td>
+    <td>0.0374</td>
+    <td>0.0059</td>
+  </tr>
+  <tr>
+    <td>Triagnle 5</td>
+    <td>0.0030</td>
+    <td>0.0008</td>
+  </tr>
+</table>
+
+<!-- <p>Here is an example 2x2 gridlike structure using an HTML table. Each <b>tr</b> is a row and each <b>td</b> is a column in that row. You might find this useful for framing and showing your result images in an organized fashion.</p>
+
+<div align="middle">
+  <table style="width=100%">
+    <tr>
+      <td>
+        <img src="images/image1.png" align="middle" width="400px"/>
+        <figcaption align="middle">Caption goes here.</figcaption>
+      </td>
+      <td>
+        <img src="images/image2.png" align="middle" width="400px"/>
+        <figcaption align="middle">Caption goes here.</figcaption>
+      </td>
+    </tr>
+    <br>
+    <tr>
+      <td>
+        <img src="images/image3.png" align="middle" width="400px"/>
+        <figcaption align="middle">Caption goes here.</figcaption>
+      </td>
+      <td>
+        <img src="images/image4.png" align="middle" width="400px"/>
+        <figcaption align="middle">Caption goes here.</figcaption>
+      </td>
+    </tr>
+  </table>
+</div> -->
+
+</div>
+
+
+
+<h3 align="middle">Part 2: Antialiasing triangles</h3>
+<p>In this task, we need to implement antaliasing for the algorithm that we came up with in task 1. To achieve this, we utilized sample_buffer to store our supersample data, which has a size of the original buffer * sample rate. Then, both dimensions will have a increase in sample rate by sqrt(sample_rate). Supersampling is very useful because we can eliminate aliasing by increasing the sample rate, which removes frequencies above Nyquist frequency before sampling, resulting in a smoother rendering. We also modified RasterizerImp::fill_pixel to implement proper supersampling for points and lines. </p>
+<p>Throughout the rasterization pipeline, we modified our iteration process to accomodate for supersampling and, instead of directly render it onto the screen, we put it into the sample_buffer. Then, we downsample the sample_buffer to fit in the original buffer size by taking the average of the nearest sample_rate supersamples and put it into the original buffer, which gets rasterized later. This yields a smoother rasterization result as we can see once we increase the sampling rate: </p>
+
+<img src="images/task2-1.png" align="middle" width="600px"/>
+<figcaption align="middle">Supersampling at sample rate = 1 sample/pixel.</figcaption>
+<img src="images/task2-4.png" align="middle" width="600px"/>
+<figcaption align="middle">Supersampling at sample rate = 4 samples/pixel.</figcaption>
+<img src="images/task2-9.png" align="middle" width="600px"/>
+<figcaption align="middle">Supersampling at sample rate = 9 samples/pixel.</figcaption>
+<img src="images/task2-16.png" align="middle" width="600px"/>
+<figcaption align="middle">Supersampling at sample rate = 16 samples/pixel.</figcaption>
+
+<p>From above, we can clearly see that supersampling reduces aliasing as we increase the sampling rate.</p>
+
+
+
+<h3 align="middle">Part 3: Transforms</h3>
+<p>In order to implement transforms of the object, we deducted the transform matrices corresponding to each types of transforms, and it is rather straightforward regarding each transforms.</p>
+<img src="images/my_robot.png" align="middle" width="600px"/>
+<figcaption align="middle">my_robot.svg of cubeman dancing</figcaption>
+
+<p>We try to make cubeman dancing on its toes and having interesting arm gestures. First, we rotate
+the lower rectangles of legs by 45 degrees to create a pointy shape (rotate after scaling). Then, we rotate the lower arm rectangles by 45 degrees (rotate before scaling).
+In the end, we move lower arm rectangles higher for left side and lower for right side just to make cubeman prettier.</p>
+
+<h2 align="middle">Section II: Sampling</h2>
+
+<h3 align="middle">Part 4: Barycentric coordinates</h3>
+<p>The main structure of rasterizing a triangle using barycentric coordinates is similar to rasterizing a triangle in Euclidean coordinates, except the fact that now we need to take the colors defined specifically at the vertices into account. In order to achieve this, we introduced three new variables alpha, beta, and gamma, each corresponds to a vertex of the triangle, which are used in the helper function RasterizerImp::color_at_point. Then, we are able to interpolate the color at each pixel by calculating its alpha, beta, and gamma values, which represents the relative distance porportional to each vertex (or the weight of each vertex at each point), and rasterize the triangle with the algorithm similar to that in task 1. </p>
+
+<img src="images/task4demo.png" align="middle" width="600px"/>
+<figcaption align="middle">test7.svg with default viewing parameters and sample rate 1.</figcaption>
+
+
+<h3 align="middle">Part 5: "Pixel sampling" for texture mapping</h3>
+<p>Pixel sampling is the process that we match each pixel into the texture space and render the corresponding result back to screen space. Therefore, we need to convert the coordinates in the screen space into texture space and then calculate the corresponding color that will be used for display. In this process, we need sampling to retrieve the correct information as we perform coordinate transformations, since the two coordinate systems can be very different. The two methods that we implemented for sampling are Nearest Sampling and Bilinear Sampling.</p>
+
+<p>Nearest Sampling is the method that we find the closest texel in the texture space that corresponds to the original pixel and directly retrieve the information in that texel and rasterize it into the pixel. This results in a rather jaggie rasterization.</p>
+
+<p>Bilinear Sampling is the method that we find the closest 4 texels according to the coordinates in the texture space translated from the original coordinates of the pixel, and interpolated them with a weighted average which is returned to the pixel to render. After rasterization, we can see that using bilinear sampling yields a much smoother image compared to Nearest Sampling.</p>
+
+<img src="images/Greece-1.png" align="middle" width="600px"/>
+<figcaption align="middle">Nearest Sampling at sample rate = 1 sample/pixel, Greece.</figcaption>
+<img src="images/Greece-2.png" align="middle" width="600px"/>
+<figcaption align="middle">Nearest Sampling at sample rate = 16 samples/pixel, Greece.</figcaption>
+<img src="images/Greece-3.png" align="middle" width="600px"/>
+<figcaption align="middle">Bilinear Sampling at sample rate = 1 sample/pixel, Greece.</figcaption>
+<img src="images/Greece-4.png" align="middle" width="600px"/>
+<figcaption align="middle">Bilinear Sampling at sample rate = 16 samples/pixel, Greece.</figcaption>
+
+<p>From the above zoom-ins on Greece, we can see that bilinear sampling yields better results than nearest sampling at given sampling rates. At sample rate = 1 sample/pixel, nearest sampling is giving a very jaggie contour of the land and there are many discontinuities regarding the colors (many sudden changes of colors). However, with bilinear sampling, we can clearly see that the jaggie-ness is less obvious and the colors become more gradient.</p>
+
+<p> When we increase the sample rate to 16 samples/pixel, the image of the landscape becomes more natural and continuous, with less jaggie-ness and color jumps, and the overall image becomes smoother. The large difference between the two methods (especialy at lower sample rates) is because of the fact that bilinear sampling provides one more layer of filtering than nearest sampling which helps remove jaggie-ness and discontinuities, and will become much more significant if we are sampling at lower rates.</p>
+
+<h3 align="middle">Part 6: "Level sampling" with mipmaps for texture mapping</h3>
+<p>Level sampling is a method that provides flexibility across the whole image to prevent aliasing at high frequency areas and blurring at low frequency areas according to the relative depth of view in the texture space. In our case, we utilized Mipmap for level sampling. Without having to compute each pixel at runtime, we precalculate the results for each pixel at each level, and retrieve the result according to the level during rasterization.</p>
+
+<p>To implement level sampling, we introduced new modes of sampling:
+<br>1. L_ZERO: we simply sample from the 0-th Mipmap, just like we did in task 5.
+<br>2. L_NEAREST: we calculate the level for each pixel in the texture space, find the nearest level accordingly, and retrieve the information from that Mipmap level.
+<br>3. L_LINEAR: we calculate the level for each pixel in the texture space, and perform a simple linear interpolation between the nearest two levels in the Mipmap.
+</p>
+
+<p>To calculate the the Mipmap level D, we first calculated the (u, v) coordinates in the texture space according to (x, y) for each pixel. In order to calculate the differentials, we used an approximation by calculating the (u, v) coordinates for (x + 1, y) and (x, y + 1) that can be used calculate the differentials by taking a subtraction with (x, y) in texture space.
+Then, wecan simply follow the equations to compute the level:</p>
+<img src="images/level_equations.png" align="middle" width="600px"/>
+<p>We clamped the result to the range [0, Mipmap.size() - 1] so that the images can be rendered correctly without out of bound errors or blanks.</p>
+
+<p>Pixel sampling is fast and does not use a lot of memory, but the aliasing effect is very obvious.
+On the other hand, supersampling is slow as it invokes a lot of computations as we increase the sampling rate, and it consumes a lot more memory. The antialiasing effect is very significant, but the cost is also high.
+Level sampling, in addition, only requires about 1/3 more of the original memory, is not only fast, but also very good at antialiasing. Since the Mipmap is precalculated, we only need constant time for each pixel to retrieve the rendering data, and it provides a similar effect of supersampling. It does have drawbacks, however, at high frequency areas, that the images becomes blurry.</p>
+
+<img src="images/l0pn.png" align="middle" width="600px"/>
+<figcaption align="middle">L_ZERO and P_NEAREST at sample rate = 1 sample/pixel</figcaption>
+<img src="images/l0pl.png" align="middle" width="600px"/>
+<figcaption align="middle">L_ZERO and P_LINEAR at sample rate = 1 sample/pixel</figcaption>
+<img src="images/lnpn.png" align="middle" width="600px"/>
+<figcaption align="middle">L_NEAREST and P_NEAREST at sample rate = 1 sample/pixel</figcaption>
+<img src="images/lnpl.png" align="middle" width="600px"/>
+<figcaption align="middle">L_NEAREST and P_LINEAR at sample rate = 1 sample/pixel</figcaption>
+
+<p>From the above images, we can see that the aliasing effect on the white lights of Bay Bridge becomes less obvious as we change the combinations of sampling methods. On the overall image, the aliasing effects of other areas are also less severe, and the image becomes smoother.</p>
+
+
+
+
+<h2 align="middle">Section III: Art Competition</h2>
+<p>If you are not participating in the optional art competition, don't worry about this section!</p>
+
+<h3 align="middle">Part 7: Draw something interesting!</h3>
+
+</body>
 </html>
